@@ -41,29 +41,28 @@ class PrismaSaseCollector(Collector):
                     )
                     return
 
-            # Fetch inventory and topological state
+            # 1. Fetch site topology
             sites = self.client.get_sites()
             site_lookup: dict[str, str] = {
-                s.get("id", ""): s.get("name", s.get("id", "Unknown")) for s in sites if s.get("id")
+                str(s.get("id", "")): str(s.get("name", s.get("id", "Unknown")))
+                for s in sites
+                if s.get("id")
             }
 
+            # 2. Fetch element inventory
             elements = self.client.get_elements()
-            element_statuses = self.client.get_element_status()
-            status_by_element_id: dict[str, dict[str, object]] = {
-                str(st.get("id") or st.get("element_id") or ""): st for st in element_statuses
-            }
 
-            # 1. Site Metrics
+            # 3. Yield site metrics
             yield from self._collect_site_metrics(sites)
 
-            # 2. Element (ION Device) Metrics
-            yield from self._collect_element_metrics(elements, site_lookup, status_by_element_id)
+            # 4. Yield element (ION device) metrics
+            yield from self._collect_element_metrics(elements, site_lookup)
 
-            # 3. VPN Link Status Metrics
-            yield from self._collect_vpn_metrics(site_lookup)
+            # 5. Yield WAN interface metrics per site
+            yield from self._collect_wan_metrics(sites)
 
-            # 4. BGP Peer Metrics
-            yield from self._collect_bgp_metrics(site_lookup)
+            # 6. Yield BGP peer routing metrics
+            yield from self._collect_bgp_metrics(elements, site_lookup)
 
         except Exception as exc:
             logger.exception("Unexpected error during metrics scrape: %s", exc)
@@ -114,7 +113,6 @@ class PrismaSaseCollector(Collector):
         self,
         elements: list[dict[str, object]],
         site_lookup: dict[str, str],
-        status_by_element_id: dict[str, dict[str, object]],
     ) -> Iterator[Metric]:
         """Generate ION element appliance metrics."""
         elem_info = GaugeMetricFamily(
@@ -138,7 +136,7 @@ class PrismaSaseCollector(Collector):
         )
         elem_oper_state = GaugeMetricFamily(
             "prisma_sase_element_operational_state",
-            "Operational state of ION element (1=online, 0=offline/degraded)",
+            "Operational state of ION element (1=online/active/bound, 0=offline/degraded)",
             labels=["element_id", "element_name", "operational_state", "site_name"],
         )
         elem_uptime = GaugeMetricFamily(
@@ -172,30 +170,29 @@ class PrismaSaseCollector(Collector):
                 1.0,
             )
 
-            status = status_by_element_id.get(elem_id, {})
-            connected = status.get("connected", elem.get("connected", False))
+            connected = elem.get("connected", False)
             is_conn = 1.0 if connected in (True, "true", "True", 1) else 0.0
             elem_connected.add_metric([elem_id, elem_name, site_name], is_conn)
 
-            oper_state = str(status.get("operational_state", elem.get("state", "unknown"))).lower()
+            oper_state = str(elem.get("state", elem.get("operational_state", "unknown"))).lower()
             is_online = 1.0 if oper_state in ("online", "active", "bound", "up") else 0.0
             elem_oper_state.add_metric([elem_id, elem_name, oper_state, site_name], is_online)
 
-            uptime_val = status.get("system_up_time") or status.get("uptime")
+            uptime_val = elem.get("system_up_time") or elem.get("uptime")
             if uptime_val is not None:
                 try:
                     elem_uptime.add_metric([elem_id, elem_name, site_name], float(str(uptime_val)))
                 except (ValueError, TypeError):
                     pass
 
-            cpu_val = status.get("cpu_utilization") or status.get("cpu_percent")
+            cpu_val = elem.get("cpu_utilization") or elem.get("cpu_percent")
             if cpu_val is not None:
                 try:
                     elem_cpu.add_metric([elem_id, elem_name, site_name], float(str(cpu_val)))
                 except (ValueError, TypeError):
                     pass
 
-            mem_val = status.get("memory_utilization") or status.get("memory_percent")
+            mem_val = elem.get("memory_utilization") or elem.get("memory_percent")
             if mem_val is not None:
                 try:
                     elem_memory.add_metric([elem_id, elem_name, site_name], float(str(mem_val)))
@@ -209,45 +206,104 @@ class PrismaSaseCollector(Collector):
         yield elem_cpu
         yield elem_memory
 
-    def _collect_vpn_metrics(self, site_lookup: dict[str, str]) -> Iterator[Metric]:
-        """Generate VPN link overlay status metrics."""
-        vpn_status = GaugeMetricFamily(
-            "prisma_sase_vpn_link_status",
-            "Status of VPN Overlay Link (1=up, 0=down/degraded)",
-            labels=["link_id", "source_site", "target_site", "state"],
+    def _collect_wan_metrics(self, sites: list[dict[str, object]]) -> Iterator[Metric]:
+        """Generate WAN interface operational status and bandwidth metrics."""
+        wan_status = GaugeMetricFamily(
+            "prisma_sase_wan_interface_status",
+            "Operational state of WAN interface (1=up/operational, 0=down)",
+            labels=["site_id", "site_name", "waninterface_id", "type"],
+        )
+        wan_bw_down = GaugeMetricFamily(
+            "prisma_sase_wan_interface_bandwidth_down_mbps",
+            "Configured downlink bandwidth in Mbps for WAN interface",
+            labels=["site_id", "site_name", "waninterface_id", "type"],
+        )
+        wan_bw_up = GaugeMetricFamily(
+            "prisma_sase_wan_interface_bandwidth_up_mbps",
+            "Configured uplink bandwidth in Mbps for WAN interface",
+            labels=["site_id", "site_name", "waninterface_id", "type"],
         )
 
-        links = self.client.get_vpn_links_status()
-        for link in links:
-            link_id = str(link.get("id", ""))
-            src_id = str(link.get("site_id") or link.get("source_site_id") or "")
-            dst_id = str(link.get("peer_site_id") or link.get("target_site_id") or "")
-            src_name = site_lookup.get(src_id, src_id or "Unknown")
-            dst_name = site_lookup.get(dst_id, dst_id or "Unknown")
-            state = str(link.get("state", link.get("status", "unknown"))).lower()
+        for site in sites:
+            site_id = str(site.get("id", ""))
+            site_name = str(site.get("name", site_id))
+            if not site_id:
+                continue
 
-            is_up = 1.0 if state in ("up", "active", "established", "online") else 0.0
-            vpn_status.add_metric([link_id, src_name, dst_name, state], is_up)
+            wan_interfaces = self.client.get_wan_interfaces(site_id)
+            for wan in wan_interfaces:
+                wan_id = str(wan.get("id", ""))
+                wan_type = str(wan.get("type", "publicwan"))
+                if not wan_id:
+                    continue
 
-        yield vpn_status
+                status = self.client.get_wan_interface_status(site_id, wan_id)
+                oper_state = status.get("operational_state", False)
+                is_up = 1.0 if oper_state in (True, "true", "True", 1) else 0.0
+                wan_status.add_metric([site_id, site_name, wan_id, wan_type], is_up)
 
-    def _collect_bgp_metrics(self, site_lookup: dict[str, str]) -> Iterator[Metric]:
+                bw_down = wan.get("link_bw_down")
+                if bw_down is not None:
+                    try:
+                        wan_bw_down.add_metric(
+                            [site_id, site_name, wan_id, wan_type], float(str(bw_down))
+                        )
+                    except (ValueError, TypeError):
+                        pass
+
+                bw_up = wan.get("link_bw_up")
+                if bw_up is not None:
+                    try:
+                        wan_bw_up.add_metric(
+                            [site_id, site_name, wan_id, wan_type], float(str(bw_up))
+                        )
+                    except (ValueError, TypeError):
+                        pass
+
+        yield wan_status
+        yield wan_bw_down
+        yield wan_bw_up
+
+    def _collect_bgp_metrics(
+        self,
+        elements: list[dict[str, object]],
+        site_lookup: dict[str, str],
+    ) -> Iterator[Metric]:
         """Generate BGP peer session status metrics."""
         bgp_state = GaugeMetricFamily(
             "prisma_sase_bgp_peer_state",
             "BGP Peer Session State (1=Established, 0=Active/Idle/Connect/Open)",
-            labels=["peer_ip", "peer_asn", "site_name", "state"],
+            labels=["site_name", "element_name", "peer_name", "peer_ip", "peer_asn", "state"],
         )
 
-        peers = self.client.get_bgp_peers_status()
-        for peer in peers:
-            peer_ip = str(peer.get("peer_ip") or peer.get("ip_address") or "unknown")
-            peer_asn = str(peer.get("peer_asn") or peer.get("asn") or "unknown")
-            site_id = str(peer.get("site_id", ""))
-            site_name = site_lookup.get(site_id, site_id or "Unknown")
-            state = str(peer.get("state") or peer.get("session_state") or "unknown").lower()
+        for elem in elements:
+            elem_id = str(elem.get("id", ""))
+            elem_name = str(elem.get("name", elem_id))
+            site_id = str(elem.get("site_id", ""))
+            site_name = site_lookup.get(site_id, "Unassigned")
+            if not site_id or not elem_id:
+                continue
 
-            is_established = 1.0 if state == "established" else 0.0
-            bgp_state.add_metric([peer_ip, peer_asn, site_name, state], is_established)
+            peers = self.client.get_bgp_peers(site_id, elem_id)
+            if not peers:
+                continue
+
+            peer_statuses = self.client.get_bgp_peers_status(site_id, elem_id)
+            status_map = {str(st.get("id", "")): st for st in peer_statuses}
+
+            for peer in peers:
+                peer_id = str(peer.get("id", ""))
+                peer_name = str(peer.get("name", peer_id))
+                peer_ip = str(peer.get("peer_ip", "unknown"))
+                peer_asn = str(peer.get("remote_as_num", "unknown"))
+
+                st = status_map.get(peer_id, {})
+                state = str(st.get("state", "unknown")).lower()
+
+                is_established = 1.0 if state == "established" else 0.0
+                bgp_state.add_metric(
+                    [site_name, elem_name, peer_name, peer_ip, peer_asn, state],
+                    is_established,
+                )
 
         yield bgp_state

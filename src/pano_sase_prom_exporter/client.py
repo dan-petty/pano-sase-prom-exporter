@@ -88,14 +88,16 @@ class PrismaSaseClient:
             logger.error("Failed to retrieve elements: %s", err)
             return []
 
-    def get_element_status(self) -> list[dict[str, Any]]:
-        """Fetch real-time status of all ION elements."""
+    def get_element_status(self, element_id: str) -> dict[str, Any]:
+        """Fetch real-time status of a specific ION element."""
         try:
-            resp = self.sdk.get.status_e()
-            return self._extract_items(resp)
+            resp = self.sdk.get.status_e(element_id=element_id)
+            if resp and resp.sdk_status and isinstance(resp.sdk_content, dict):
+                return resp.sdk_content
+            return {}
         except Exception as err:
-            logger.error("Failed to retrieve element status: %s", err)
-            return []
+            logger.debug("Failed to retrieve status for element %s: %s", element_id, err)
+            return {}
 
     def get_interfaces(self, site_id: str, element_id: str) -> list[dict[str, Any]]:
         """Fetch interfaces for a specific element at a site."""
@@ -103,7 +105,7 @@ class PrismaSaseClient:
             resp = self.sdk.get.interfaces(site_id=site_id, element_id=element_id)
             return self._extract_items(resp)
         except Exception as err:
-            logger.error(
+            logger.debug(
                 "Failed to retrieve interfaces for site %s / element %s: %s",
                 site_id,
                 element_id,
@@ -117,23 +119,60 @@ class PrismaSaseClient:
             resp = self.sdk.get.waninterfaces(site_id=site_id)
             return self._extract_items(resp)
         except Exception as err:
-            logger.error("Failed to retrieve WAN interfaces for site %s: %s", site_id, err)
+            logger.debug("Failed to retrieve WAN interfaces for site %s: %s", site_id, err)
             return []
 
-    def get_vpn_links_status(self) -> list[dict[str, Any]]:
-        """Fetch operational status of VPN overlay links across the topology."""
+    def get_wan_interface_status(self, site_id: str, waninterface_id: str) -> dict[str, Any]:
+        """Fetch operational state of a WAN interface."""
         try:
-            resp = self.sdk.get.status_vpnlinks()
+            resp = self.sdk.get.waninterfaces_status(
+                site_id=site_id, waninterface_id=waninterface_id
+            )
+            if resp and resp.sdk_status and isinstance(resp.sdk_content, dict):
+                return resp.sdk_content
+            return {}
+        except Exception as err:
+            logger.debug(
+                "Failed to retrieve WAN interface status for %s/%s: %s",
+                site_id,
+                waninterface_id,
+                err,
+            )
+            return {}
+
+    def get_wan_networks(self) -> list[dict[str, Any]]:
+        """Fetch WAN networks configured in the tenant."""
+        try:
+            resp = self.sdk.get.wannetworks()
             return self._extract_items(resp)
         except Exception as err:
-            logger.error("Failed to retrieve VPN links status: %s", err)
+            logger.debug("Failed to retrieve WAN networks: %s", err)
             return []
 
-    def get_bgp_peers_status(self) -> list[dict[str, Any]]:
-        """Fetch status of BGP routing peer sessions."""
+    def get_bgp_peers(self, site_id: str, element_id: str) -> list[dict[str, Any]]:
+        """Fetch BGP peers configured for an element at a site."""
         try:
-            resp = self.sdk.get.status_bgppeers()
+            resp = self.sdk.get.bgppeers(site_id=site_id, element_id=element_id)
             return self._extract_items(resp)
         except Exception as err:
-            logger.error("Failed to retrieve BGP peers status: %s", err)
+            logger.debug(
+                "Failed to retrieve BGP peers for site %s / element %s: %s",
+                site_id,
+                element_id,
+                err,
+            )
+            return []
+
+    def get_bgp_peers_status(self, site_id: str, element_id: str) -> list[dict[str, Any]]:
+        """Fetch real-time status of BGP routing peer sessions for an element."""
+        try:
+            resp = self.sdk.get.status_bgppeers(site_id=site_id, element_id=element_id)
+            return self._extract_items(resp)
+        except Exception as err:
+            logger.debug(
+                "Failed to retrieve BGP peers status for site %s / element %s: %s",
+                site_id,
+                element_id,
+                err,
+            )
             return []

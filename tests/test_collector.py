@@ -1,14 +1,19 @@
 """Tests for Prometheus metrics collector."""
 
 from unittest.mock import MagicMock
-
 from pano_sase_prom_exporter.client import PrismaSaseClient
 from pano_sase_prom_exporter.collector import PrismaSaseCollector
 from pano_sase_prom_exporter.config import Settings
 
 
 def test_collector_yields_expected_metrics() -> None:
-    settings = Settings(prisma_sase_auth_token="jwt-sample")
+    settings = Settings(
+        _env_file=None,
+        prisma_sase_client_id=None,
+        prisma_sase_client_secret=None,
+        prisma_sase_tsg_id=None,
+        prisma_sase_auth_token="jwt-sample",
+    )
     mock_sdk = MagicMock()
     mock_sdk.get.sites.return_value = {
         "items": [
@@ -30,38 +35,42 @@ def test_collector_yields_expected_metrics() -> None:
                 "site_id": "site-101",
                 "software_version": "6.1.1",
                 "role": "spoke",
-            }
-        ]
-    }
-    mock_sdk.get.status_e.return_value = {
-        "items": [
-            {
-                "id": "elem-201",
                 "connected": True,
-                "operational_state": "online",
+                "state": "online",
                 "system_up_time": 86400,
                 "cpu_utilization": 24.5,
                 "memory_utilization": 42.0,
             }
         ]
     }
-    mock_sdk.get.status_vpnlinks.return_value = {
+    mock_sdk.get.waninterfaces.return_value = {
         "items": [
             {
-                "id": "vpn-301",
-                "site_id": "site-101",
-                "peer_site_id": "site-102",
-                "state": "up",
+                "id": "wan-301",
+                "type": "publicwan",
+                "link_bw_down": 100.0,
+                "link_bw_up": 20.0,
+            }
+        ]
+    }
+    mock_sdk.get.waninterfaces_status.return_value = MagicMock(
+        sdk_status=True, sdk_content={"id": "wan-301", "operational_state": True}
+    )
+    mock_sdk.get.bgppeers.return_value = {
+        "items": [
+            {
+                "id": "bgp-401",
+                "name": "Peer-1",
+                "peer_ip": "10.0.0.1",
+                "remote_as_num": "65001",
             }
         ]
     }
     mock_sdk.get.status_bgppeers.return_value = {
         "items": [
             {
-                "site_id": "site-101",
-                "peer_ip": "10.0.0.1",
-                "peer_asn": "65001",
-                "state": "established",
+                "id": "bgp-401",
+                "state": "Established",
             }
         ]
     }
@@ -80,7 +89,9 @@ def test_collector_yields_expected_metrics() -> None:
     assert "prisma_sase_element_uptime_seconds" in metric_names
     assert "prisma_sase_element_cpu_utilization_percent" in metric_names
     assert "prisma_sase_element_memory_utilization_percent" in metric_names
-    assert "prisma_sase_vpn_link_status" in metric_names
+    assert "prisma_sase_wan_interface_status" in metric_names
+    assert "prisma_sase_wan_interface_bandwidth_down_mbps" in metric_names
+    assert "prisma_sase_wan_interface_bandwidth_up_mbps" in metric_names
     assert "prisma_sase_bgp_peer_state" in metric_names
     assert "prisma_sase_scrape_success" in metric_names
     assert "prisma_sase_scrape_duration_seconds" in metric_names

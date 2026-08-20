@@ -1,6 +1,5 @@
 """Configuration settings for the Prisma SASE Prometheus Exporter."""
 
-
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
