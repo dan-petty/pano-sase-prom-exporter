@@ -103,6 +103,24 @@ scrape_configs:
 
 ---
 
+## Grafana Dashboard
+
+A ready-to-import Grafana dashboard JSON is located at [`dashboards/prisma_sdwan_overview.json`](dashboards/prisma_sdwan_overview.json).
+
+### Dashboard Panels & Features:
+- **Executive KPIs**: Active sites count, online/offline ION appliances, overlay VPN health %, BGP peer session health %, scrape state.
+- **Resource Utilization**: CPU and Memory utilization (%) time series charts with configurable warning/critical thresholds.
+- **Inventory Matrix**: Sortable table with site names, element IDs, hardware models, serial numbers, software versions, and live connection states.
+- **Network & Routing**: Overlay VPN channel states and BGP neighbor peering tables.
+- **Dynamic Templating**: Filters metrics dynamically by Site and Element/ION appliance.
+
+To import:
+1. Open Grafana → **Dashboards** → **New** → **Import**.
+2. Upload [`dashboards/prisma_sdwan_overview.json`](dashboards/prisma_sdwan_overview.json) or paste its contents.
+3. Select your Prometheus data source when prompted.
+
+---
+
 ## Development & Testing
 
 Run unit tests and linters:
