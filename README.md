@@ -67,6 +67,23 @@ Validate API connectivity and view a sample of collected metrics:
 uv run pano-sase-prom-exporter test
 ```
 
+### Run with Docker
+
+Build and run the containerized exporter:
+
+```bash
+# Build the Docker image
+docker build -t pano-sase-prom-exporter:latest .
+
+# Run container with environment file
+docker run -d \
+  --name pano-sase-prom-exporter \
+  --restart unless-stopped \
+  -p 9850:9850 \
+  --env-file .env \
+  pano-sase-prom-exporter:latest
+```
+
 ---
 
 ## Exported Metrics Catalog
