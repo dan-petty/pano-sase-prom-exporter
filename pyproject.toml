@@ -1,0 +1,54 @@
+[project]
+name = "pano-sase-prom-exporter"
+version = "0.1.0"
+description = "Prometheus exporter for Palo Alto Networks Prisma SASE & SD-WAN ION devices"
+readme = "README.md"
+authors = [
+    { name = "Daniel Petty", email = "contact@danielpetty.com" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "prisma-sase==6.8.1b1",
+    "prometheus-client>=0.20.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+    "typer>=0.12.0",
+    "rich>=13.7.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.scripts]
+pano-sase-prom-exporter = "pano_sase_prom_exporter.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-mock>=3.12.0",
+    "ruff>=0.9.0",
+    "mypy>=1.11.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pano_sase_prom_exporter"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["N818"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+ignore_missing_imports = true
