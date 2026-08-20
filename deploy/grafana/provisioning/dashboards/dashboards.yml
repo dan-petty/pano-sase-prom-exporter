@@ -1,0 +1,14 @@
+apiVersion: 1
+
+providers:
+  - name: "Prisma SD-WAN Dashboards"
+    orgId: 1
+    folder: "Prisma SASE"
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

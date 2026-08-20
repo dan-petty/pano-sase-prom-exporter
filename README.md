@@ -84,6 +84,23 @@ docker run -d \
   pano-sase-prom-exporter:latest
 ```
 
+### Full Monitoring Stack with Docker Compose
+
+Launch the complete observability stack (**Exporter + Prometheus + Grafana** with auto-provisioned dashboards and datasources):
+
+```bash
+# Start all services in the background
+docker compose up -d
+
+# Check service logs
+docker compose logs -f
+
+# Access web interfaces:
+# - Exporter metrics: http://localhost:9850/metrics
+# - Prometheus UI:    http://localhost:9090
+# - Grafana UI:       http://localhost:3000 (admin / admin)
+```
+
 ---
 
 ## Exported Metrics Catalog
