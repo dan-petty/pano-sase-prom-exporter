@@ -23,7 +23,7 @@ This repository uses [`uv`](https://docs.astral.sh/uv/) for Python package and d
 ### 1. Clone & Sync Dependencies
 
 ```bash
-cd /workspaces/devops-cli/repos/dan-petty/pano-sase-prom-exporter
+cd repos/dan-petty/pano-sase-prom-exporter
 uv sync
 ```
 
